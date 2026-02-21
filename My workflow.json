@@ -1,0 +1,798 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "f8f5f233-94ce-446b-961d-2330a013eea1",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "eb3d5869-0e6f-45ad-862e-b8d174fd91ac",
+              "name": "city",
+              "value": "Farmington Hills, MI",
+              "type": "string"
+            },
+            {
+              "id": "635c78fa-7bd0-4c4e-9002-d706503e5005",
+              "name": "radius_miles",
+              "value": "100",
+              "type": "string"
+            },
+            {
+              "id": "02d6e155-25b5-42df-8ff5-317210a59ca2",
+              "name": "group_size",
+              "value": "4",
+              "type": "string"
+            },
+            {
+              "id": "a9be012e-c15e-41ca-b7e0-903c7d61e1d2",
+              "name": "day_type",
+              "value": "weekend",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ],
+      "id": "127d3cc0-34e3-4fe6-ac69-4c75a5dd5761",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "url": "https://geocoding-api.open-meteo.com/v1/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{$json[\"city\"].split(\",\")[0]}}"
+            },
+            {
+              "name": "count",
+              "value": "1"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        400,
+        128
+      ],
+      "id": "85dbcb54-0f72-4add-8681-548b28f7a3cb",
+      "name": "Req - geo (long & lat)"
+    },
+    {
+      "parameters": {
+        "url": "https://api.open-meteo.com/v1/forecast",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "latitude",
+              "value": "={{$json[\"lat\"]}}"
+            },
+            {
+              "name": "longitude",
+              "value": "={{$json[\"lon\"]}}"
+            },
+            {
+              "name": "hourly",
+              "value": "temperature_2m,precipitation,cloudcover,windspeed_10m"
+            },
+            {
+              "name": "forecast_days",
+              "value": "2"
+            },
+            {
+              "name": "timezone",
+              "value": "America/Detroit"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        736,
+        128
+      ],
+      "id": "533b896d-744f-42aa-9724-e36498a42f80",
+      "name": "Weather-forecast"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Summarize next ~12 hours from Open-Meteo hourly arrays\nconst hourly = $json.hourly;\n\nconst times = hourly.time;\nconst temps = hourly.temperature_2m;\nconst precip = hourly.precipitation;\nconst clouds = hourly.cloudcover;\nconst wind = hourly.windspeed_10m;\n\nconst n = Math.min(12, times.length);\n\nlet maxTemp = -Infinity;\nlet minTemp = Infinity;\nlet totalPrecip = 0;\nlet maxPrecip = 0;\nlet avgCloud = 0;\nlet maxWind = 0;\n\nfor (let i = 0; i < n; i++) {\n  const t = temps[i];\n  const p = precip[i];\n  const c = clouds[i];\n  const w = wind[i];\n\n  if (t > maxTemp) maxTemp = t;\n  if (t < minTemp) minTemp = t;\n\n  totalPrecip += p;\n  if (p > maxPrecip) maxPrecip = p;\n\n  avgCloud += c;\n  if (w > maxWind) maxWind = w;\n}\n\navgCloud = avgCloud / n;\n\n// Simple labels for planning\nconst rainy = totalPrecip >= 2 || maxPrecip >= 1;      // mm thresholds (rough)\nconst windy = maxWind >= 25;                           // km/h rough\nconst cold = maxTemp <= 5;                             // °C\nconst hot = maxTemp >= 28;                             // °C\n\nlet weatherLabel = \"great_outdoors\";\nif (rainy) weatherLabel = \"rainy\";\nelse if (cold) weatherLabel = \"cold\";\nelse if (hot) weatherLabel = \"hot\";\nelse if (windy) weatherLabel = \"windy\";\n\nreturn [{\n  json: {\n    next_hours: n,\n    temp_c_min: Number(minTemp.toFixed(1)),\n    temp_c_max: Number(maxTemp.toFixed(1)),\n    precip_mm_total: Number(totalPrecip.toFixed(2)),\n    precip_mm_max_hour: Number(maxPrecip.toFixed(2)),\n    cloud_avg_pct: Number(avgCloud.toFixed(0)),\n    wind_kmh_max: Number(maxWind.toFixed(1)),\n    weather_label: weatherLabel\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -64
+      ],
+      "id": "3a036ec1-7e70-4385-995c-58bc53dc361b",
+      "name": "Weather-summary"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ca2e26ea-3f6c-4f1e-bf1f-245628f74d18",
+              "leftValue": "={{ [\"rainy\",\"cold\",\"windy\"].includes($json.weather_label) }}",
+              "rightValue": "rainy",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1104,
+        48
+      ],
+      "id": "6ed39d51-7be8-4c3c-8414-adf41a4ec27d",
+      "name": "check-rainy"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8bb6ca7e-32f3-4b81-981d-595439f41e8c",
+              "name": "categories",
+              "value": "cafes,museums,bowling,indoor_climbing,malls",
+              "type": "string"
+            },
+            {
+              "id": "68409635-4aca-448c-9a44-9f0cd6f2c99e",
+              "name": "plan_type",
+              "value": "indoor",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1264,
+        -224
+      ],
+      "id": "f37c2843-4cfd-4a0c-8247-0782126599cc",
+      "name": "Indoor (true)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f8c0dcc1-f43e-4517-a7ab-3c6b1bac370d",
+              "name": "categories",
+              "value": "parks,trails,lakes,viewpoints,street_festivals",
+              "type": "string"
+            },
+            {
+              "id": "0687f879-39d7-4d9b-996f-ebeb33ea73ec",
+              "name": "plan_type",
+              "value": "outdoor",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1312,
+        256
+      ],
+      "id": "9023ed3b-cfb4-4641-8e1c-35f58d357283",
+      "name": "Outdoor (false)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9e83836b-c3da-46bf-9cbd-b019c8fe4722",
+              "name": "radius_meters",
+              "value": "15000",
+              "type": "string"
+            },
+            {
+              "id": "000bb33a-7430-4ad5-be68-3c3c19838874",
+              "name": "categories_yelp",
+              "value": "={{ $json.plan_type === \"indoor\"   ? \"cafes,museums,bowling,climbing,shoppingcenters\"   : \"parks,hiking,lakes,landmarks\" }}",
+              "type": "string"
+            },
+            {
+              "id": "ea78225d-065a-4059-b3a1-b965be9fc9bf",
+              "name": "limit",
+              "value": "20",
+              "type": "string"
+            },
+            {
+              "id": "6190820e-288f-4732-8288-ce38ed9cfb5b",
+              "name": "lat",
+              "value": "={{$node[\"Store Location\"].json.lat}}",
+              "type": "string"
+            },
+            {
+              "id": "4a54d776-86e1-4c58-8ba1-ae192938df73",
+              "name": "lon",
+              "value": "={{$node[\"Store Location\"].json.lon}}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1472,
+        32
+      ],
+      "id": "a5adb427-0b1e-4996-81d8-ae47294d6af6",
+      "name": "Prepare Places Query"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "64bc6e6a-2698-4111-9748-b00b640a3deb",
+              "name": "lat",
+              "value": "={{$json[\"results\"][0][\"latitude\"]}}",
+              "type": "string"
+            },
+            {
+              "id": "7e1661c6-ee4d-4878-9782-bd41aa0d448f",
+              "name": "lon",
+              "value": "={{$json[\"results\"][0][\"longitude\"]}}",
+              "type": "string"
+            },
+            {
+              "id": "2f282fcb-b238-45f2-8519-cb4620c6a01f",
+              "name": "city_name",
+              "value": "={{$json[\"results\"][0][\"name\"]}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        560,
+        -64
+      ],
+      "id": "dca8fac4-1f13-49ef-b8ac-4d383b7e4d57",
+      "name": "Store Location"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://overpass.kumi.systems/api/interpreter",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "data",
+              "value": "=[out:json][timeout:25][maxsize:536870912];\n(\n  node(around:{{$json.radius_meters}},{{$json.lat}},{{$json.lon}})[\"amenity\"~\"cafe|restaurant|bar|pub|fast_food\"];\n  way(around:{{$json.radius_meters}},{{$json.lat}},{{$json.lon}})[\"amenity\"~\"cafe|restaurant|bar|pub|fast_food\"];\n);\nout center 50;\n"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1664,
+        -160
+      ],
+      "id": "86421595-12fc-4537-9c80-38a6aac40e8a",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lat0 = Number($node[\"Prepare Places Query\"].json.lat);\nconst lon0 = Number($node[\"Prepare Places Query\"].json.lon);\n\n// Better error handling: check if elements exists and is an array\nconst elements = Array.isArray($json.elements) ? $json.elements : [];\n\n// If no valid elements, return empty array with error info\nif (!elements.length) {\n  return [{\n    json: {\n      deduped: [],\n      error: \"No elements found in API response\",\n      raw_response: $json\n    }\n  }];\n}\n\nfunction haversineMiles(lat1, lon1, lat2, lon2) {\n  const R = 3958.8; // Earth radius in miles\n  const toRad = d => (d * Math.PI) / 180;\n  const dLat = toRad(lat2 - lat1);\n  const dLon = toRad(lon2 - lon1);\n  const a =\n    Math.sin(dLat/2)**2 +\n    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;\n  return 2 * R * Math.asin(Math.sqrt(a));\n}\n\nfunction getLatLon(el) {\n  if (typeof el.lat === \"number\" && typeof el.lon === \"number\") return { lat: el.lat, lon: el.lon };\n  if (el.center && typeof el.center.lat === \"number\" && typeof el.center.lon === \"number\") return { lat: el.center.lat, lon: el.center.lon };\n  return null;\n}\n\nconst places = elements.map(el => {\n  const tags = el.tags || {};\n  const coords = getLatLon(el);\n  if (!coords) return null;\n\n  const name = tags.name || null;\n  const amenity = tags.amenity || null;\n\n  // keep only relevant items (amenity based)\n  if (!amenity) return null;\n\n  const distance_miles = haversineMiles(lat0, lon0, coords.lat, coords.lon);\n\n  return {\n    name: name || `${amenity}`,\n    amenity,\n    lat: coords.lat,\n    lon: coords.lon,\n    distance_miles: Number(distance_miles.toFixed(1)),\n    // optional address hints if available\n    city: tags[\"addr:city\"] || null,\n    street: tags[\"addr:street\"] || null,\n    website: tags.website || tags[\"contact:website\"] || null\n  };\n}).filter(Boolean);\n\n// Deduplicate by (name + rounded coords)\nconst seen = new Set();\nconst deduped = [];\nfor (const p of places) {\n  const key = `${(p.name || \"\").toLowerCase()}|${p.lat.toFixed(5)}|${p.lon.toFixed(5)}`;\n  if (seen.has(key)) continue;\n  seen.add(key);\n  deduped.push(p);\n}\n\n// Sort by distance\ndeduped.sort((a,b) => a.distance_miles - b.distance_miles);\n\nreturn [{\n  json: {\n    deduped\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2096,
+        -128
+      ],
+      "id": "521f40cb-42fe-4604-a8ae-746170169c4e",
+      "name": "extract-places"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the places array from the collect places node output\nconst places = Array.isArray($json.places) ? $json.places : [];\n\n// Pull context from the input\nconst weatherLabel = String($json.weather_label ?? \"cold\").toLowerCase();\nconst dayType = String($json.day_type ?? \"weekday\").toLowerCase();\nconst groupSize = Number($json.group_size ?? 4);\n\n// scoring helpers\nconst chainKeywords = [\n  \"starbucks\",\"mcdonald\",\"subway\",\"taco bell\",\"domino\",\n  \"pizza hut\",\"little caesars\",\"panera\",\"jimmy john\",\n  \"dairy queen\",\"noodles & company\",\"buffalo wild wings\"\n];\n\nfunction chainPenalty(name) {\n  const n = (name || \"\").toLowerCase();\n  return chainKeywords.some(k => n.includes(k)) ? 0.25 : 0;\n}\n\nfunction amenityBoost(amenity) {\n  const a = (amenity || \"\").toLowerCase();\n  if (a === \"restaurant\") return 0.25;\n  if (a === \"pub\") return 0.22;\n  if (a === \"bar\") return 0.20;\n  if (a === \"cafe\") return 0.15;\n  if (a === \"fast_food\") return -0.10;\n  return 0;\n}\n\nfunction distancePenalty(dMiles) {\n  return Math.min(0.4, Number(dMiles || 0) / 40);\n}\n\nfunction crowdRisk(amenity) {\n  let risk = 0.25;\n  const a = (amenity || \"\").toLowerCase();\n  if (a === \"bar\" || a === \"pub\") risk += 0.25;\n  if (a === \"restaurant\") risk += 0.20;\n  return Math.max(0, Math.min(1, risk));\n}\n\nfunction groupFit(amenity) {\n  const a = (amenity || \"\").toLowerCase();\n  let score = groupSize <= 2 ? 0.9 : groupSize <= 5 ? 0.82 : 0.7;\n  if (a === \"cafe\" && groupSize >= 6) score -= 0.15;\n  if (a === \"fast_food\" && groupSize >= 6) score -= 0.10;\n  return Math.max(0, Math.min(1, score));\n}\n\nfunction weatherFit() {\n  return [\"cold\",\"rainy\",\"snowy\",\"windy\"].includes(weatherLabel) ? 0.9 : 0.85;\n}\n\nconst scored_places = places\n  .filter(p => p && p.name) // keep valid\n  .map(p => {\n    const cr = crowdRisk(p.amenity);\n    const gf = groupFit(p.amenity);\n    const wf = weatherFit();\n\n    const score =\n      (0.35 * gf) +\n      (0.25 * wf) +\n      (0.20 * (1 - cr)) +\n      amenityBoost(p.amenity) -\n      chainPenalty(p.name) -\n      distancePenalty(p.distance_miles);\n\n    return {\n      ...p,\n      crowd_risk: Number(cr.toFixed(2)),\n      group_fit: Number(gf.toFixed(2)),\n      weather_fit: Number(wf.toFixed(2)),\n      score: Number(score.toFixed(3)),\n    };\n  })\n  .sort((a, b) => b.score - a.score);\n\n// Return ONE item containing the full ranked list\nreturn [{\n  json: {\n    weather_label: weatherLabel,\n    day_type: dayType,\n    group_size: groupSize,\n    scored_places\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        -112
+      ],
+      "id": "2cc9b8b8-8dea-4bb2-9383-e1774cc1c1a6",
+      "name": "score places"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all(); const ctx = $node[\"Prepare Places Query\"].json; const places = allItems.map(item => item.json); console.log('Collected items:', allItems.length); console.log('Places:', places.length); return [{ json: { ...ctx, places, debug_item_count: allItems.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2512,
+        208
+      ],
+      "id": "c56096f3-92ab-4587-9d3f-1886a615741f",
+      "name": "collect places"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        2976,
+        384
+      ],
+      "id": "2b415b51-e994-47b8-b499-a8a442b38f7a",
+      "name": "When chat message received",
+      "webhookId": "23740436-e8cb-413a-9873-abf9336b85ea"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Context:\n- Weather: {{$json.weather_label}}\n- Day type: {{$json.day_type}}\n- Group size: {{$json.group_size}}\n\nCandidate places (ranked):\n{{$json.top5}}\n\nTask:\nPick the best 3 options for today. For each option:\n- 1 sentence what it is\n- 2 bullets why it fits (group size + weather + crowd)\n- Mention distance and rating if available\n- Give a simple “best time to go” suggestion\n\nReturn as JSON with keys:\n{ \"top_recommendations\": [...], \"why_these\": \"...\", \"backup\": [...] }",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2944,
+        -16
+      ],
+      "id": "e095474a-c153-48bb-8a6d-f69064ca8931",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        3056,
+        176
+      ],
+      "id": "f6397133-b30f-4574-b03b-58ced03fe1ce",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "rogXrgS1uyqJnN7g",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.elements }}",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5a3177b9-aa7e-4617-841e-3f717cfc0cd2",
+      "name": "Check Valid JSON Response",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "error_type",
+              "value": "overpass_api_error",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "error_message",
+              "value": "={{ $json.data }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "status",
+              "value": "failed",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3321afe7-c516-438f-9ee3-ad3e177e83a3",
+      "name": "Log API Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2112,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "deduped",
+        "options": {}
+      },
+      "id": "9642fb04-bdf2-4815-b1a1-94ade4bcd4f4",
+      "name": "Split Places Into Items",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2304,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const scored = $json.scored_places || [];\nconst top5 = scored.slice(0, 5);\nconst backup5 = scored.slice(5, 10);\n\nreturn [{\n  json: {\n    ...$json,\n    top5,\n    backup5\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2768,
+        208
+      ],
+      "id": "6cd8ad49-2167-4540-a966-c93a86951370",
+      "name": "top picks"
+    },
+    {
+      "parameters": {
+        "jsCode": "function stripCodeFences(s) {\n  if (!s) return \"\";\n  // remove ```json ... ``` or ``` ... ```\n  return s\n    .replace(/^```(?:json)?\\s*/i, \"\")\n    .replace(/\\s*```$/i, \"\")\n    .trim();\n}\n\n// Depending on your LLM node, the text may be in different fields.\n// Common cases:\nconst raw =\n  $json.text ||\n  $json.response ||\n  $json.output ||\n  $json.message ||\n  ($json.generations?.[0]?.[0]?.text) ||\n  \"\";\n\nconst cleaned = stripCodeFences(String(raw));\n\n// Try to parse JSON; if it fails, still return cleaned text so you can see errors.\nlet parsed = null;\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (e) {}\n\nreturn [{\n  json: {\n    raw,\n    cleaned,\n    parsed,           // will be an object if valid JSON\n    ok: parsed !== null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3264,
+        -16
+      ],
+      "id": "d1988254-6421-48b9-b9d7-5fc07d5021c9",
+      "name": "clean-llm-output"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Req - geo (long & lat)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Req - geo (long & lat)": {
+      "main": [
+        [
+          {
+            "node": "Store Location",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weather-forecast": {
+      "main": [
+        [
+          {
+            "node": "Weather-summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weather-summary": {
+      "main": [
+        [
+          {
+            "node": "check-rainy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check-rainy": {
+      "main": [
+        [
+          {
+            "node": "Indoor (true)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Outdoor (false)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Indoor (true)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Places Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outdoor (false)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Places Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Location": {
+      "main": [
+        [
+          {
+            "node": "Weather-forecast",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Places Query": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Check Valid JSON Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract-places": {
+      "main": [
+        [
+          {
+            "node": "Split Places Into Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "score places": {
+      "main": [
+        [
+          {
+            "node": "top picks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "collect places": {
+      "main": [
+        [
+          {
+            "node": "score places",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Valid JSON Response": {
+      "main": [
+        [
+          {
+            "node": "extract-places",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log API Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Places Into Items": {
+      "main": [
+        [
+          {
+            "node": "collect places",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "top picks": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "clean-llm-output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "13044d3a-2492-4a7c-9adc-1dc7b85104d4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "face5bd270e4f86d7b99ea24b5e146c3b33eb19688da3a4128ae3378478f74af"
+  },
+  "id": "oqIYF210acI3z2xl",
+  "tags": []
+}
